@@ -1,7 +1,7 @@
-﻿# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Author: github.com/scytex
-# Date: 20.10.2022
-# Version: 1.0
+# Date: 03.11.2022
+# Version: 1.1
 # Description: Backup Confluence and Jira into a local directory
 # API Documentation: https://docs.atlassian.com/atlassian-confluence/1000.1829.0/com/atlassian/confluence/test/rest/api/obm/
 # -----------------------------------------------------------------------------
@@ -72,13 +72,56 @@ $naming_convention_jira = "JIRA-backup-$date";
 $curl = "C:\Windows\System32\curl.exe";
 # max amount of progress checks before stopping / failing
 $progress_checks = 1000;
-# time between progress checks
+# time between progress checks - In this case 1000 * 30 = ~8:20h before giving up
 $interval_seconds = 30;
-# In this case 1000 * 30 = ~8:20h before giving up
+# Path where the logging file will be stored
+$logging_path = "."
 
 # -----------------------------------------------------------------------------
 # Don't touch anything after this point if you aren't sure what you are doing.
 # -----------------------------------------------------------------------------
+
+$log_file_name = "backup-logs";
+if ($jira) { $log_file_name += "-jira" }
+if ($confluence) { $log_file_name += "-confluence" }
+$log_file_name += "-$date.txt"
+
+function Format-Output
+{
+   param (
+      [Parameter(Position = 0)]
+      [string]
+      $prefix,
+
+      [Parameter(Position = 1)]
+      [string]
+      $text,
+
+      # error, warn, success, default
+      [Parameter(Position = 2, Mandatory = $false)]
+      [string]
+      $log_level = "default",
+
+      [Parameter(Position = 3, Mandatory = $false)]
+      [string]
+      $text_color = [System.Console]::ForegroundColor
+   )
+
+   switch ($log_level.ToLower()) {
+      "error" { $color = "Red" }
+      "warn" { $color = "DarkYellow" }
+      "success" { $color = "Green" }
+      Default { $color = [System.Console]::ForegroundColor }
+   }
+
+   Write-Host "[$prefix] " -ForegroundColor $color -NoNewline;
+   Write-Host $text -ForegroundColor $text_color;
+}
+
+function Stop-Script {
+   Stop-Transcript;
+   exit
+}
 
 if ($help -or (-not $confluence -and -not $jira))
 {
@@ -117,100 +160,86 @@ if ($help -or (-not $confluence -and -not $jira))
    exit;
 }
 
+Start-Transcript -Path "$logging_path\$log_file_name" -Append;
+
 if ($PSBoundParameters.ContainsKey('user'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding username to $user"
+   Format-Output "Config" "Overriding username to $user" "warn"
    $username = $user;
 }
 elseif ($username -eq "") {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing username"
-   exit;
+   Format-Output "Error" "Missing username" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('token'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding api token to $token"
+   Format-Output "Config" "Overriding api token to $token" "warn"
    $api_token = $token;
 }
 elseif ($api_token -eq "") {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing API token"
-   exit;
+   Format-Output "Error" "Missing API token" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('attachments'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding attachments to $attachments"
+   Format-Output "Config" "Overriding attachments to $attachments" "warn"
    $include_attachments = $attachments;
 }
 elseif ($attachments -eq $null) {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing attachments flag"
-   exit;
+   Format-Output "Error" "Missing attachments flag" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('url'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding instance to $url"
+   Format-Output "Config" "Overriding instance to $url" "warn"
    $instance = $url;
 }
 elseif ($instance -eq "") {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing instance url"
-   exit;
+   Format-Output "Error" "Missing instance url" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('path_conf'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding confluence path to $path_conf"
+   Format-Output "Config" "Overriding confluence path to $path_conf" "warn"
    $location_confluence = $path_conf;
 }
 elseif ($location_confluence -eq "" -and $confluence) {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing path to confluence backup location"
-   exit;
+   Format-Output "Error" "Missing path to confluence backup location" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('path_jira'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding jira path to $path_jira"
+   Format-Output "Config" "Overriding jira path to $path_jira" "warn"
    $location_jira = $path_jira;
 }
 elseif ($location_jira -eq "" -and $jira) {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing path to jira backup location"
-   exit;
+   Format-Output "Error" "Missing path to jira backup location" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('file_name_conf'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding conf backup file name to $file_name_conf"
+   Format-Output "Config" "Overriding conf backup file name to $file_name_conf" "warn"
    $naming_convention_confluence = $file_name_conf;
 }
 elseif ($naming_convention_confluence -eq "" -and $confluence) {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing file name for confluence backup"
-   exit;
+   Format-Output "Error" "Missing file name for confluence backup" "error"
+   Stop-Script;
 }
 
 if ($PSBoundParameters.ContainsKey('file_name_jira'))
 {
-   Write-Host "[Config] " -ForegroundColor Yellow -NoNewline
-   Write-Host "Overriding jira backup file name to $file_name_jira"
+   Format-Output "Config" "Overriding jira backup file name to $file_name_jira" "warn"
    $naming_convention_jira = $file_name_jira;
 }
 elseif ($naming_convention_jira -eq "" -and $jira) {
-   Write-Host "[Error] " -ForegroundColor Red -NoNewline
-   Write-Host "Missing file name for jira backup"
-   exit;
+   Format-Output "Error" "Missing file name for jira backup" "error"
+   Stop-Script;
 }
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
@@ -249,7 +278,7 @@ if ($dry)
    Write-Host "File name Jira             " -NoNewline
    Write-Host $naming_convention_jira -ForegroundColor Yellow
    Write-Host "------------------------------------------------------------------------------" -ForegroundColor Red
-   exit;
+   Stop-Script;
 }
 
 # -----------------------------------------------------------------------------
@@ -261,8 +290,7 @@ if ($confluence)
    $file_name = "";
    $stopwatch = [System.Diagnostics.Stopwatch]::new()
 
-   Write-Host "[Confluence] " -ForegroundColor Green -NoNewline;
-   Write-Host "Starting Confluence backup..." -ForegroundColor Cyan;
+   Format-Output "Confluence" "Starting Confluence backup..." "success" "Cyan"
    Write-Host "[Confluence] " -ForegroundColor Green -NoNewline;
    Write-Host "Selected instance: " -NoNewline;
    Write-Host $instance -ForegroundColor Green;
@@ -275,7 +303,7 @@ if ($confluence)
    Write-Host "[Confluence] " -ForegroundColor Green -NoNewline;
    Write-Host "Requesting backup creation..." -ForegroundColor Cyan;
    $response = (& $curl -s -u "${username}:${api_token}" -H "Content-Type: application/json" -X POST "https://$instance/wiki/rest/obm/1.0/runbackup" -d $data);
-   Write-Debug $response;
+   #Write-Debug $response;
 
    if (($response -like "*Unexpected*") -or ($response -like "*error*"))
    {
@@ -292,7 +320,7 @@ if ($confluence)
          Write-Host "[Confluence] " -ForegroundColor Green -NoNewline;
          Write-Host "Error creating backup. Quitting." -ForegroundColor Red
          Write-Host $response -ForegroundColor DarkYellow
-         exit;
+         Stop-Script;
       }
    }
 
@@ -304,7 +332,7 @@ if ($confluence)
       {
          Write-Host "[Confluence] " -ForegroundColor Green -NoNewline;
          Write-Host "Couldn't create backup. Quitting." -ForegroundColor Red
-         exit;
+         Stop-Script;
       }
 
       if ($response.alternativePercentage -eq "100%")
@@ -361,7 +389,7 @@ if ($jira)
    Write-Host "[JIRA] " -ForegroundColor Green -NoNewline;
    Write-Host "Requesting backup creation..." -ForegroundColor Cyan;
    $response = (& $curl -s -u "${username}:${api_token}" -H "Accept: application/json" -H "Content-Type: application/json" -X POST "https://$instance/rest/backup/1/export/runbackup" -d $data);
-   Write-Debug $response;
+   #Write-Debug $response;
 
    if (($response -like "*Unexpected*") -or ($response -like "*error*"))
    {
@@ -380,7 +408,7 @@ if ($jira)
          Write-Host "Error creating backup. Quitting." -ForegroundColor Red
          Write-Host "[JIRA] " -ForegroundColor Green -NoNewline;
          Write-Host $response -ForegroundColor DarkYellow
-         exit;
+         Stop-Script;
       }
    }
 
@@ -394,7 +422,7 @@ if ($jira)
       {
          Write-Host "[JIRA] " -ForegroundColor Green -NoNewline;
          Write-Host "Couldn't create backup. Quitting." -ForegroundColor Red
-         exit;
+         Stop-Script;
       }
 
       if ($response.progress -eq "100")
@@ -406,7 +434,7 @@ if ($jira)
       }
 
       Write-Host "[JIRA] " -ForegroundColor Green -NoNewline;
-      Write-Host $response.progress + "%";
+      Write-Host $response.progress "%";
 
       Start-Sleep -Seconds $interval_seconds;
    }
@@ -426,3 +454,5 @@ if ($jira)
       Write-Host ("Total runtine: " + $stopwatch.Elapsed.Minutes + "min" + $stopwatch.Elapsed.Seconds + "sec")
    }
 }
+
+Stop-Transcript
